@@ -178,3 +178,4 @@ if __name__ == "__main__":
     midi_stream = stream.Stream(output_notes)
     midi_stream.write('midi', fp='output_file.mid'.format(song))
 
+
