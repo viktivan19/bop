@@ -1,3 +1,5 @@
+"""test PR """
+
 from music21 import converter, instrument, note as m_note, chord, stream
 from os import listdir
 from os.path import isfile, join
@@ -170,6 +172,7 @@ def get_predictions(model, network_input, pitch_list, num_elements, numeric_note
 
 
 if __name__ == "__main__":
+    
     notes = process_data()
     network_input_train, network_output, num_elements, network_input, pitch_list, numeric_notes = generate_input_sequences(notes)
     model = train_model(network_input_train, network_output, num_elements)
