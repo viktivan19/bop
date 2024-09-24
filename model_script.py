@@ -1,3 +1,5 @@
+"""test PR """
+
 from music21 import converter, instrument, note as m_note, chord, stream
 from os import listdir
 from os.path import isfile, join
@@ -10,6 +12,78 @@ from keras.layers import Activation
 from keras.layers import BatchNormalization as BatchNorm
 from keras.utils import np_utils
 from datetime import datetime
+
+
+class MelodyGenerator:
+    def __init__(self, model, network_input, pitch_list, num_elements, numeric_notes):
+        """
+        Initialize the melody generator with the trained model and data.
+        :param model: Fitted model
+        :param network_input: input sequences
+        :param pitch_list: list of pitches from the training data
+        :param num_elements: number of pitches in training
+        :param numeric_notes: dictionary mapping notes to integers
+        """
+        self.model = model
+        self.network_input = network_input
+        self.pitch_list = pitch_list
+        self.num_elements = num_elements
+        self.numeric_notes = numeric_notes
+        self.int_to_note = dict((number, note) for number, note in enumerate(pitch_list))
+
+    def generate_melody(self, length=40):
+        """
+        Generate a single melody.
+        :param length: length of the melody to generate
+        :return: list of generated notes
+        """
+        start = np.random.randint(0, len(self.network_input) - 1)
+        pattern = self.network_input[start]
+        preds = []
+
+        for note_index in range(length):
+            prediction_input = np.reshape(pattern, (1, len(pattern), 1))
+            prediction_input = prediction_input / float(self.num_elements)
+            prediction = self.model.predict(prediction_input, verbose=0)
+
+            index = np.argsort(np.max(prediction, axis=0))[-2]
+            single_pred = self.int_to_note[index]
+            preds.append(single_pred)
+            pattern.append(index)
+            pattern = pattern[1:len(pattern)]
+
+        return preds
+
+    def create_midi(self, preds, output_file='output_file.mid'):
+        """
+        Create a MIDI file from the generated notes.
+        :param preds: list of generated notes
+        :param output_file: name of the output MIDI file
+        """
+        offset = 0
+        output_notes = []
+
+        for pattern in preds:
+            if ('.' in pattern) or pattern.isdigit():
+                element_chord = pattern.split('.')
+                notes = []
+                for current_note in element_chord:
+                    new_note = m_note.Note(int(current_note))
+                    new_note.storedInstrument = instrument.Piano()
+                    notes.append(new_note)
+                new_chord = chord.Chord(notes)
+                new_chord.offset = offset
+                output_notes.append(new_chord)
+            else:
+                new_note = m_note.Note(pattern)
+                new_note.offset = offset
+                new_note.storedInstrument = instrument.Piano()
+                output_notes.append(new_note)
+
+            offset += 0.5
+
+        midi_stream = stream.Stream(output_notes)
+        midi_stream.write('midi', fp=output_file)
 
 
 def process_data():
@@ -26,9 +100,9 @@ def process_data():
             midi = converter.parse("../data_final/" + file)
             next_note = None
             elements = instrument.partitionByInstrument(midi)
-            if elements: # file has instrument elements
+            if elements:  # file has instrument elements
                 next_note = elements.elements[0].recurse()
-            else: # file has notes in a flat structure
+            else:  # file has notes in a flat structure
                 next_note = midi.flat.notes
             for element in next_note:
                 if isinstance(element, m_note.Note):
@@ -99,7 +173,7 @@ def train_model(network_input_train, network_output, num_elements):
     model.add(Activation('softmax'))
     model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
 
-    print( "Start time: ", datetime.now())
+    print("Start time: ", datetime.now())
 
     model.fit(network_input_train, network_output, epochs=2, batch_size=128)
 
@@ -171,10 +245,10 @@ def get_predictions(model, network_input, pitch_list, num_elements, numeric_note
 
 if __name__ == "__main__":
     notes = process_data()
-    network_input_train, network_output, num_elements, network_input, pitch_list, numeric_notes = generate_input_sequences(notes)
+    network_input_train, network_output, num_elements, network_input, pitch_list, numeric_notes = generate_input_sequences(
+        notes)
     model = train_model(network_input_train, network_output, num_elements)
-    output_notes, song = get_predictions(model, network_input, pitch_list, num_elements, numeric_notes)
 
-    midi_stream = stream.Stream(output_notes)
-    midi_stream.write('midi', fp='output_file.mid'.format(song))
-
+    melody_generator = MelodyGenerator(model, network_input, pitch_list, num_elements, numeric_notes)
+    preds = melody_generator.generate_melody()
+    melody_generator.create_midi(preds)
